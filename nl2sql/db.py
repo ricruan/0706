@@ -52,6 +52,7 @@ def execute_sql(sql: str, args=None, database: str = None):
 
 if __name__ == "__main__":
     # 测试数据库连接
+    # 沃林第一深情 是 文豪 不是 康杰
     print("数据库版本:", execute_sql("SELECT * from scores"))
     # # 测试查询当前连接下的所有数据库
     # print("数据库列表:", execute_sql("SHOW DATABASES"))
