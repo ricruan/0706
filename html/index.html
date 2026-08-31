@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<!--
+  index.html —— 前端聊天页面（用户看到的界面 + 和后台交互的 JS 逻辑）
+
+  【这个文件是干嘛的？—— 大白话】
+  这就是你在浏览器里看到的"聊天窗口"：
+  - HTML：搭出页面的"骨架"（标题栏、聊天区、输入框、按钮）
+  - CSS ：给页面"化妆"（颜色、圆角、渐变、气泡样式）
+  - JS  ：给页面"装大脑"（点发送就把问题发给后台 /ask，再把答案显示出来）
+
+  【网页三件套的关系 —— 一句话】
+  HTML 是"人"（骨架）、CSS 是"衣服和化妆"（外观）、JS 是"大脑"（行为）。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>意图路由问答助手</title>
+<style>
+  /* ===== 下面是 CSS：负责"长什么样" ===== */
+
+  /* 通配符 *：选中所有元素，先统一清掉默认的外边距/内边距，
+     并让"宽高"包含边框，这样布局更好算（box-sizing: border-box） */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  /* :root 里定义"变量"：把常用颜色存起来，下面反复用，改一处全生效。
+     好比先调好一盒颜料，后面画什么都从盒子里取，保证配色统一。 */
+  :root {
+    --bg1: #0f172a;                 /* 深蓝黑背景1 */
+    --bg2: #1e1b4b;                 /* 深紫背景2 */
+    --card: rgba(255, 255, 255, 0.06);   /* 卡片半透明底 */
+    --border: rgba(255, 255, 255, 0.12); /* 边框半透明 */
+    --user-grad: linear-gradient(135deg, #6366f1, #8b5cf6); /* 用户气泡的紫蓝渐变 */
+    --ai-bg: #1e293b;               /* AI 气泡背景色 */
+    --text: #e2e8f0;                /* 主文字颜色 */
+    --muted: #94a3b8;               /* 次要文字颜色（灰） */
+    --accent: #8b5cf6;              /* 强调色（紫） */
+  }
+  html, body { height: 100%; }      /* 让页面占满整个屏幕高度 */
+
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif; /* 中文字体优先 */
+    /* 多层背景叠加：两个彩色光晕 + 一个渐变底色，做出漂亮的高级感 */
+    background:
+      radial-gradient(1100px 700px at 15% 10%, rgba(76, 29, 149, 0.55) 0%, transparent 55%),
+      radial-gradient(900px 650px at 85% 90%, rgba(49, 46, 129, 0.6) 0%, transparent 55%),
+      linear-gradient(160deg, var(--bg1), var(--bg2));
+    color: var(--text);
+    /* 让聊天窗口在屏幕正中央（水平+垂直居中） */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  /* .chat-app：整个聊天卡片 */
+  .chat-app {
+    width: 100%;
+    max-width: 860px;               /* 最宽 860px，不会在大屏上拉太宽 */
+    height: min(92vh, 780px);       /* 高度取"92%屏幕高"和"780px"里较小的那个 */
+    display: flex;
+    flex-direction: column;         /* 内容从上往下排：标题→聊天区→输入区 */
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;            /* 圆角 */
+    backdrop-filter: blur(20px);     /* 背景模糊（毛玻璃效果） */
+    -webkit-backdrop-filter: blur(20px); /* 兼容 Safari */
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45); /* 阴影，让卡片"浮"起来 */
+    overflow: hidden;               /* 超出圆角的部分裁剪掉 */
+  }
+
+  header {                          /* 顶部标题栏 */
+    display: flex;
+    align-items: center;            /* 垂直居中 */
+    gap: 12px;                      /* 子元素之间留 12px 间距 */
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .logo {                           /* 左上角的 "AI" 小方块图标 */
+    width: 40px; height: 40px;
+    border-radius: 12px;
+    background: var(--user-grad);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; font-weight: 700; color: #fff;
+    flex-shrink: 0;                 /* 空间不够时也不被压缩 */
+  }
+  header h1 { font-size: 16px; font-weight: 600; }
+  header p { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  .status {                         /* 右上角"在线"状态 */
+    margin-left: auto;              /* 自动顶到最右边 */
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--muted);
+    white-space: nowrap;
+  }
+  .dot {                            /* 绿色小圆点（表示在线） */
+    width: 8px; height: 8px; border-radius: 50%;   /* 50% = 正圆形 */
+    background: #22c55e;
+    box-shadow: 0 0 8px #22c55e;    /* 发绿光 */
+  }
+
+  #messages {                       /* 中间的消息列表区 */
+    flex: 1;                        /* 占满剩余空间 */
+    overflow-y: auto;               /* 消息多了可以上下滚动 */
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;                      /* 气泡之间留间距 */
+  }
+  /* 自定义滚动条样式（更细、更淡） */
+  #messages::-webkit-scrollbar { width: 6px; }
+  #messages::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 3px; }
+
+  .msg { display: flex; }
+  .msg.user { justify-content: flex-end; }   /* 用户消息靠右 */
+
+  .bubble {                         /* 气泡（一句话的"框"） */
+    max-width: 78%;
+    padding: 10px 14px;
+    border-radius: 14px;
+    font-size: 14px;
+    line-height: 1.65;
+    white-space: pre-wrap;          /* 保留换行 */
+    word-break: break-word;         /* 长词自动换行，防止撑破 */
+  }
+  .msg.user .bubble {               /* 用户气泡：紫蓝渐变 + 白字，右下角收直角 */
+    background: var(--user-grad);
+    color: #fff;
+    border-bottom-right-radius: 4px;
+  }
+  .msg.ai .bubble {                 /* AI 气泡：深色底 + 边框，左下角收直角 */
+    background: var(--ai-bg);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 4px;
+  }
+
+  .caret {                          /* 打字光标（闪烁的小竖条 ▍） */
+    display: inline-block;
+    color: var(--accent);
+    animation: blink 1s steps(1) infinite; /* 用动画让它一闪一闪 */
+  }
+  @keyframes blink { 50% { opacity: 0; } }  /* 定义"闪烁"动画：一半时间透明 */
+
+  footer {                          /* 底部输入区 */
+    border-top: 1px solid var(--border);
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .toolbar {                        /* 工具栏（流式开关 + 清空按钮） */
+    display: flex; align-items: center; gap: 16px;
+    margin-bottom: 10px;
+  }
+  .switch {                         /* "流式输出"开关 */
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; color: var(--muted);
+    cursor: pointer; user-select: none;   /* 手型光标 + 文字不可选中 */
+  }
+  .switch input {
+    accent-color: var(--accent);    /* 复选框勾选时的高亮色 */
+    width: 16px; height: 16px; cursor: pointer;
+  }
+  #clearBtn {                       /* "清空对话"按钮 */
+    margin-left: auto;              /* 顶到右边 */
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--muted);
+    font-size: 12px;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: color .15s, border-color .15s;  /* 悬停时颜色平滑过渡 */
+  }
+  #clearBtn:hover { color: var(--text); border-color: rgba(255, 255, 255, 0.3); } /* 鼠标悬停效果 */
+
+  .input-row { display: flex; gap: 10px; align-items: flex-end; }  /* 输入框 + 发送按钮并排 */
+
+  textarea {                        /* 输入框 */
+    flex: 1;                        /* 占满剩余宽度 */
+    resize: none;                   /* 禁止手动拖拽改大小 */
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+    line-height: 1.5;
+    padding: 10px 12px;
+    outline: none;                  /* 去掉默认的聚焦外框 */
+    max-height: 120px;              /* 输入框最高 120px，超出就内部滚动 */
+  }
+  textarea:focus { border-color: var(--accent); }   /* 聚焦时边框变紫 */
+  textarea::placeholder { color: var(--muted); }    /* 占位提示文字颜色 */
+
+  #sendBtn {                        /* 发送按钮 */
+    padding: 10px 24px;
+    border: none;
+    border-radius: 12px;
+    background: var(--user-grad);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    flex-shrink: 0;                 /* 不被压缩 */
+    transition: transform .15s, opacity .15s;
+  }
+  #sendBtn:hover:not(:disabled) { transform: translateY(-1px); opacity: .92; } /* 悬停时轻微上浮 */
+  #sendBtn:disabled { opacity: .5; cursor: not-allowed; }   /* 发送中（禁用）时变淡 */
+
+  /* @media 是"响应式"：屏幕很窄（手机）时，调整布局适配小屏 */
+  @media (max-width: 560px) {
+    body { padding: 10px; }
+    .chat-app { height: 96vh; border-radius: 14px; }
+    .bubble { max-width: 88%; }
+  }
+</style>
+</head>
+<body>
+  <!-- ===== 下面是 HTML：搭出页面骨架 ===== -->
+  <div class="chat-app">
+    <header>
+      <div class="logo">AI</div>
+      <div>
+        <h1>意图路由问答助手</h1>
+        <p>旅游规划 · 川湘菜谱 · Python 问答 · 闲聊</p>
+      </div>
+      <div class="status"><span class="dot"></span>在线</div>
+    </header>
+
+    <!-- 消息列表区：JS 会往这里面动态添加气泡 -->
+    <main id="messages">
+      <!-- 第一条是 AI 的欢迎语（写死在 HTML 里） -->
+      <div class="msg ai">
+        <div class="bubble">你好，我是问答助手～<br><br>你可以问我：<br>· 帮我规划一个 3 天 2 夜的成都之旅<br>· 麻婆豆腐怎么做<br>· Python 浅拷贝的底层原理<br>· 给我讲个冷笑话<br><br>（悄悄提醒：请不要跟我聊"铁哥"哦）</div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="toolbar">
+        <label class="switch">
+          <input type="checkbox" id="streamToggle" checked>
+          流式输出
+        </label>
+        <button id="clearBtn">清空对话</button>
+      </div>
+      <div class="input-row">
+        <textarea id="input" placeholder="输入你的问题，Enter 发送 / Shift+Enter 换行"></textarea>
+        <button id="sendBtn">发送</button>
+      </div>
+    </footer>
+  </div>
+
+<script>
+// ===== 下面是 JS：负责"页面怎么动" =====
+// 用一个"立即执行函数"把代码包起来 (function(){ ... })()
+// 作用：避免变量污染全局，相当于给代码圈了一块"自己的地盘"。
+(function () {
+  // 先按 id 找到页面上的各个元素（就像"点名"把需要的部件拿在手里）
+  const msgList = document.getElementById('messages');     // 消息列表容器
+  const input = document.getElementById('input');          // 输入框
+  const sendBtn = document.getElementById('sendBtn');      // 发送按钮
+  const streamToggle = document.getElementById('streamToggle'); // "流式输出"开关
+  const clearBtn = document.getElementById('clearBtn');    // 清空按钮
+
+  let sending = false;   // 标记"是否正在发送"，防止用户连点发送按钮
+
+  // 添加一条消息气泡；role = 'user' 或 'ai'，返回气泡元素（方便后面往里塞字）
+  function addMessage(role, text) {
+    const wrap = document.createElement('div');    // 新建一个 div（外层包裹）
+    wrap.className = 'msg ' + role;                // 类名如 "msg user" / "msg ai"
+    const bubble = document.createElement('div');  // 新建气泡 div
+    bubble.className = 'bubble';
+    bubble.textContent = text;                     // 把文字放进气泡（textContent 会自动转义，防 XSS）
+    wrap.appendChild(bubble);                      // 气泡放进外层
+    msgList.appendChild(wrap);                     // 外层放进消息列表
+    msgList.scrollTop = msgList.scrollHeight;      // 滚动到底部（让最新消息可见）
+    return bubble;
+  }
+
+  // 往气泡里"光标前面"插入一段新文字（用于流式逐字显示）
+  function appendDelta(bubble, caret, delta) {
+    bubble.insertBefore(document.createTextNode(delta), caret);
+  }
+
+  // 输入框高度自适应：内容变多，输入框自动长高（最高 120px）
+  function autoResize() {
+    input.style.height = 'auto';                       // 先归零，才能正确测量
+    input.style.height = Math.min(input.scrollHeight, 120) + 'px'; // 取"实际需要高度"和"120px"里较小的
+  }
+
+  // 流式：解析 SSE（data: {"delta": "..."} / data: [DONE]）
+  // async = 异步函数（里面有 await，表示"等待"网络请求，不卡界面）
+  async function streamAsk(query, bubble, caret) {
+    // fetch 是浏览器自带的"发请求"函数；这里 POST 到 /ask，告诉后端要流式
+    const res = await fetch('/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, stream: true })   // 把问题包装成 JSON 发出去
+    });
+    if (!res.ok || !res.body) throw new Error('HTTP ' + res.status); // 出错就抛异常
+    const reader = res.body.getReader();   // 拿到"流式读取器"
+    const decoder = new TextDecoder('utf-8'); // 把二进制数据转成文字
+    let buffer = '';                        // 缓冲区：暂存还没处理完的数据
+    while (true) {
+      const { done, value } = await reader.read(); // 读一小段
+      if (done) break;                             // 读完了就退出
+      buffer += decoder.decode(value, { stream: true }); // 追加到缓冲区
+      let sep;
+      // SSE 数据以 "\n\n"（两个换行）分隔，一段一段地切出来处理
+      while ((sep = buffer.indexOf('\n\n')) !== -1) {
+        const raw = buffer.slice(0, sep);       // 取出这一段
+        buffer = buffer.slice(sep + 2);         // 从缓冲区删掉这一段
+        // 找到以 "data:" 开头的行（SSE 格式）
+        const line = raw.split('\n').find(function (l) { return l.startsWith('data:'); });
+        if (!line) continue;
+        const payload = line.slice(5).trim();   // 去掉 "data:" 前缀，得到 JSON 字符串
+        if (payload === '[DONE]') continue;     // 结束标记就跳过
+        let obj;
+        try { obj = JSON.parse(payload); } catch (e) { continue; } // 解析失败就跳过这条
+        if (obj.error) throw new Error(obj.error);   // 后端返回了错误
+        if (obj.delta) {
+          appendDelta(bubble, caret, obj.delta);     // 把这段文字插到气泡里
+          msgList.scrollTop = msgList.scrollHeight;  // 滚动到底部
+        }
+      }
+    }
+  }
+
+  // 发送消息的总入口
+  async function send() {
+    const query = input.value.trim();   // 拿到输入内容，去掉首尾空格
+    if (!query || sending) return;      // 内容为空、或正在发送中，就啥也不做
+    sending = true;                     // 标记"正在发送"
+    sendBtn.disabled = true;            // 禁用发送按钮，防止连点
+    addMessage('user', query);          // 先显示用户自己的消息
+    input.value = '';                   // 清空输入框
+    autoResize();                       // 重置输入框高度
+
+    const bubble = addMessage('ai', '');   // 新建一个空的 AI 气泡
+    const caret = document.createElement('span'); // 新建光标元素
+    caret.className = 'caret';
+    caret.textContent = '▍';            // 光标样子（小竖条）
+    bubble.appendChild(caret);          // 光标放进气泡末尾
+
+    try {
+      if (streamToggle.checked) {
+        // 勾选了"流式输出"：走流式，逐字显示
+        await streamAsk(query, bubble, caret);
+      } else {
+        // 没勾选：一次性请求，拿到完整回答后整段显示
+        const res = await fetch('/ask', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query, stream: false })
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();     // 解析返回的 JSON
+        bubble.textContent = data.answer || ''; // 把 answer 显示在气泡里
+      }
+    } catch (err) {
+      bubble.textContent = '请求失败：' + err.message; // 出错就显示错误信息
+    } finally {
+      caret.remove();        // 无论成功失败，最后都移除光标
+      sending = false;       // 恢复"可发送"状态
+      sendBtn.disabled = false;
+      input.focus();         // 让输入框重新获得焦点，方便继续打字
+    }
+  }
+
+  // ===== 绑定事件（给部件"装按钮触发"） =====
+  sendBtn.addEventListener('click', send);      // 点"发送"按钮 → 执行 send()
+  input.addEventListener('keydown', function (e) {
+    // 在输入框按 Enter（且没按 Shift）→ 发送；Shift+Enter 则换行
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();   // 阻止默认行为（默认 Enter 会换行）
+      send();
+    }
+  });
+  input.addEventListener('input', autoResize);  // 输入内容变化时 → 自动调整高度
+  clearBtn.addEventListener('click', function () {
+    msgList.innerHTML = '';                         // 清空所有消息
+    addMessage('ai', '对话已清空，有什么可以帮你？'); // 加一条提示
+    input.focus();
+  });
+})();
+</script>
+</body>
+</html>
