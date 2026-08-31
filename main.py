@@ -188,6 +188,7 @@ def _stream_answer(query: str) -> StreamingResponse:
 if __name__ == "__main__":
     import uvicorn
     # 把我的服务公布于局域网或者外部网络的
+    #  沃林第一深情
     # host="0.0.0.0" 表示允许局域网/外部访问（0.0.0.0 = "监听所有网卡"）
     # port=8000      表示占用 8000 端口
     # reload=True    表示代码改动后自动重启（开发时方便）
